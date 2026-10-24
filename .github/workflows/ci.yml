@@ -34,7 +34,7 @@ jobs:
         run: xvfb-run -a python -m pytest -q
 
   windows-runtime:
-    name: Windows Python ${{ matrix.python-version }} candidate
+    name: Windows Python ${{ matrix.python-version }} ${{ matrix.python-architecture }} candidate
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -49,7 +49,7 @@ jobs:
             runner: windows-latest
             python-architecture: x64
           - python-version: '3.14.8'
-            python-minor: '3.14-arm64'
+            python-minor: '3.14'
             runner: windows-11-arm
             python-architecture: arm64
     runs-on: ${{ matrix.runner }}
@@ -76,6 +76,6 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: windows-${{ matrix.python-minor }}-installer-diagnostics
+          name: windows-${{ matrix.python-version }}-${{ matrix.python-architecture }}-installer-diagnostics
           path: build/installer-smoke-logs/
           if-no-files-found: ignore
