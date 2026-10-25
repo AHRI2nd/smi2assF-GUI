@@ -21,6 +21,24 @@ def test_gui_starts_and_registers_its_drag_target():
         app.root.destroy()
 
 
+@pytest.mark.parametrize('language, expected_title, expected_suffix', [
+    ('ko', 'SMI to ASS 변환기', '파일명에 언어 코드 표시'),
+    ('en', 'SMI to ASS Converter', 'Include language code in filenames'),
+])
+def test_gui_startup_applies_selected_language_to_visible_copy(
+        monkeypatch, language, expected_title, expected_suffix):
+    import smi2ass_gui
+    monkeypatch.setattr(smi2ass_gui, 'detect_ui_language', lambda: language)
+    app = Smi2AssApp()
+    try:
+        assert app.root.title() == expected_title
+        assert app.language_suffix_checkbox.cget('text') == expected_suffix
+        expected_hint = '.smi 파일을 여기에 놓으세요' if language == 'ko' else 'Drop .smi files here'
+        assert app._state_copy()[0] == expected_hint
+    finally:
+        app._dispose()
+
+
 def test_smoke_test_mode_starts_and_closes_the_window():
     assert main(['--smoke-test']) == 0
 
