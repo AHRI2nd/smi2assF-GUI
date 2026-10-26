@@ -2,10 +2,12 @@
 import errno
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 
 import smi2ass
+import pytest
 
 
 def source_file(tmp_path):
@@ -110,12 +112,12 @@ def test_batch_output_collision_is_reported(tmp_path, monkeypatch):
 
 
 def test_preserved_output_does_not_need_writable_directory(tmp_path, monkeypatch):
-    import tempfile
+    import smi2ass_output
     source, target = source_file(tmp_path)
     target.write_bytes(b'preserved output')
     def denied(*args, **kwargs):
         raise PermissionError('Cannot create files in this directory')
-    monkeypatch.setattr(tempfile, 'mkstemp', denied)
+    monkeypatch.setattr(smi2ass_output.os, 'open', denied)
     result = smi2ass.convert_smi_file(source, overwrite=False)
     assert result.skipped_existing == (target,)
     assert not result.outputs
@@ -172,3 +174,85 @@ def test_valid_long_filename_can_be_published(tmp_path):
     result = smi2ass.convert_smi_file(source)
     assert result.outputs == (target,)
     assert b'Keep' in target.read_bytes()
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX permission bits are not used on Windows')
+def test_new_output_uses_normal_file_creation_permissions(tmp_path):
+    from smi2ass_output import publish_ass
+    ordinary = tmp_path / 'ordinary.ass'
+    with ordinary.open('wb') as stream:
+        stream.write(b'ordinary')
+
+    published = tmp_path / 'published.ass'
+    publish_ass(published, b'published', overwrite=False)
+
+    assert stat.S_IMODE(published.stat().st_mode) == stat.S_IMODE(ordinary.stat().st_mode)
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX staging permissions are not used on Windows')
+def test_staged_contents_remain_private_until_publication(tmp_path, monkeypatch):
+    import smi2ass_output
+
+    original_fdopen = os.fdopen
+
+    class InspectingStream:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def write(self, contents):
+            assert stat.S_IMODE(os.fstat(self.stream.fileno()).st_mode) == 0o600
+            return self.stream.write(contents)
+
+        def flush(self):
+            return self.stream.flush()
+
+        def fileno(self):
+            return self.stream.fileno()
+
+    monkeypatch.setattr(os, 'fdopen', lambda *args, **kwargs: InspectingStream(original_fdopen(*args, **kwargs)))
+    output = tmp_path / 'private-stage.ass'
+
+    from smi2ass_output import publish_ass
+    publish_ass(output, b'private until complete', overwrite=False)
+
+    assert output.read_bytes() == b'private until complete'
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX creation permissions are not used on Windows')
+def test_umask_probe_is_empty_and_removed(tmp_path, monkeypatch):
+    original_open = os.open
+    observed = []
+
+    def inspect_open(path, flags, mode=0o777, *args, **kwargs):
+        descriptor = original_open(path, flags, mode, *args, **kwargs)
+        if Path(path).name.startswith('.smi2ass-mode-'):
+            observed.append((stat.S_IMODE(os.fstat(descriptor).st_mode), os.fstat(descriptor).st_size))
+        return descriptor
+
+    monkeypatch.setattr(os, 'open', inspect_open)
+    from smi2ass_output import publish_ass
+    output = tmp_path / 'probe.ass'
+    publish_ass(output, b'secret staged contents', overwrite=False)
+
+    assert observed == [(stat.S_IMODE(output.stat().st_mode), 0)]
+    assert not list(tmp_path.glob('.smi2ass-mode-*'))
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='POSIX permission bits are not used on Windows')
+def test_overwrite_preserves_existing_permission_bits(tmp_path):
+    from smi2ass_output import publish_ass
+    output = tmp_path / 'episode.ass'
+    output.write_bytes(b'old')
+    output.chmod(0o640)
+
+    publish_ass(output, b'new', overwrite=True)
+
+    assert output.read_bytes() == b'new'
+    assert stat.S_IMODE(output.stat().st_mode) == 0o640
