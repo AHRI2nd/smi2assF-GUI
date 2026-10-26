@@ -11,7 +11,8 @@ as a command-line interface.
 - Show the desktop interface in Korean or English based on the device language.
 - Follow the system light or dark appearance automatically.
 - When adding a folder, search its subfolders recursively. The desktop app
-  accepts files whose extension is exactly `.smi` or `.SMI`.
+  accepts `.smi` extensions without regard to letter case, including `.SMI`
+  and `.SmI`.
 - Write each `.ass` beside its source `.smi`; source files are left in place.
 - Convert SAMI files containing multiple languages into separate language
   outputs, such as `episode.eng.ass` and `episode.kor.ass`.
@@ -64,8 +65,8 @@ Review the draft and publish it from the
    should be replaced. The desktop interface follows the device language and
    uses Korean or English.
 
-Folders are searched recursively. Other extensions, including mixed-case
-variants such as `.Smi`, are not added by the desktop app. When a source
+Folders are searched recursively. Other extensions, such as `.sub` or `.srt`,
+are not added by the desktop app. When a source
 contains multiple languages, the app checks each language output separately:
 existing files are preserved by default while missing language outputs are
 created.
@@ -99,11 +100,19 @@ The converter repairs recognized, unambiguous damage, including:
 
 Cues with missing, negative, or ambiguous timestamps are skipped while other
 cues and input files continue. Unsupported font colors are reported and left
-unapplied. The app shows repair, skip, and file-error details in its history;
-the CLI prints diagnostics and returns a nonzero status if a cue was skipped or
-a file could not be processed. SMI states shorter than ASS's 10 ms timestamp
-precision are collapsed to the following state at that centisecond and shown
-as warnings; they do not fail an otherwise successful conversion.
+unapplied. The desktop app keeps its existing on-screen summary and writes
+skipped-cue reasons, failed conversions, file and folder scan errors, and
+unexpected worker exceptions to its rotating log. The CLI prints diagnostics
+and returns a nonzero status if a cue was skipped or a file could not be
+processed. SMI states shorter than ASS's 10 ms timestamp precision are
+collapsed to the following state at that centisecond and shown as warnings;
+they do not fail an otherwise successful conversion.
+
+The app log is limited to 1 MiB per file and keeps three rotated backups:
+
+- macOS: `~/Library/Logs/smi2assF/app.log`
+- Windows: `%LOCALAPPDATA%\smi2assF\Logs\app.log`
+- Linux: `${XDG_STATE_HOME:-~/.local/state}/smi2assF/app.log`
 
 Supported subtitle markup includes `<p>`, `<br>`, `<b>`, `<i>`, `<u>`, `<s>`,
 `<font>`, and `<rt>` (Ruby tags).
