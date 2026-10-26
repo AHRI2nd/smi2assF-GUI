@@ -1,4 +1,5 @@
 import locale
+import logging
 import os
 import stat
 from dataclasses import dataclass
@@ -6,6 +7,7 @@ from pathlib import Path
 from smi2ass_os_language import preferred_ui_languages
 
 
+logger = logging.getLogger('smi2assF')
 SUPPORTED_SUFFIXES = {'.smi'}
 
 UI_TEXT = {
@@ -122,12 +124,20 @@ def convert_smi_files(paths, overwrite=False, include_language_suffix=True):
                 include_language_suffix=include_language_suffix,
             )
         except Exception:
+            logger.exception('Could not convert input %s', path)
             failed += 1
             continue
         outputs += len(result.outputs)
         existing += len(result.skipped_existing)
         warnings += sum(item.severity == 'warning' for item in result.diagnostics)
+        for diagnostic in result.diagnostics:
+            if diagnostic.severity == 'skip':
+                logger.error(
+                    '%s:%d [%s] %s', path, diagnostic.line, diagnostic.code, diagnostic.message,
+                )
         if has_conversion_problem(result):
+            if not (result.outputs or result.skipped_existing):
+                logger.error('%s: conversion produced no ASS output', path)
             failed += 1
     return SmiConversionSummary(
         total=len(paths), outputs=outputs, existing=existing, failed=failed, warnings=warnings,

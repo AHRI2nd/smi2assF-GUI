@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from dataclasses import asdict
+import logging
 import queue
 import sys
 import threading
@@ -9,6 +10,7 @@ from tkinter import font, messagebox, ttk
 
 from tkinterdnd2 import COPY, DND_FILES, REFUSE_DROP, TkinterDnD
 
+from smi2ass_app_logging import configure_app_logging
 from smi2ass_preferences import load_preferences, save_preferences
 from smi2ass_gui_support import (
     convert_smi_files,
@@ -25,6 +27,8 @@ from smi2ass_gui_theme import (
     get_palette,
     selection_text_color,
 )
+
+logger = logging.getLogger('smi2assF')
 
 
 class Smi2AssApp:
@@ -278,6 +282,7 @@ class Smi2AssApp:
                              args=(self.events, tuple(files), overwrite, scan_errors, include_language_suffix),
                              daemon=True).start()
         except Exception as error:
+            logger.exception('Could not start conversion worker for inputs %r', files)
             self.events.put(('error', len(files), scan_errors, str(error)))
         self._poll_id = self.root.after(75, self._poll_worker)
 
@@ -288,6 +293,8 @@ class Smi2AssApp:
         try:
             scanned = scan_smi_files(paths)
             scan_errors += len(scanned.errors)
+            for path, error in scanned.errors:
+                logger.error('Could not scan %s: %s: %s', path, type(error).__name__, error)
             count = len(scanned.files)
             if not count:
                 events.put(('empty', scan_errors))
@@ -297,6 +304,7 @@ class Smi2AssApp:
                                         include_language_suffix=include_language_suffix)
             events.put(('done', summary, scan_errors))
         except Exception as error:
+            logger.exception('Unexpected conversion worker failure for inputs %r', paths)
             events.put(('error', count, scan_errors, str(error)))
 
     def _poll_worker(self):
@@ -365,6 +373,7 @@ class Smi2AssApp:
 
 
 def main(argv=None):
+    configure_app_logging()
     initial_paths = sys.argv[1:] if argv is None else argv
     if initial_paths == ['--smoke-test']:
         app = Smi2AssApp()
